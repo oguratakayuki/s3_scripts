@@ -22,13 +22,25 @@ module S3Sync
   end
   class CLI < Thor
     include S3Sync::AwsSetting
-    desc "download BUCKET_NAME_TO_DOWNLOAD", "download aws/s3 data to localstrage"
+    desc "download BUCKET_NAME", ""
     def download bucket_name
       setting = get_setting
       strategy = DownloadStrategy.new(bucket_name, setting)
       strategy.execute
     end
-    desc "upload BUCKET_NAME_TO_UPLOAD TIMESTAMP [--nb NEW_BUCKET_NAME_TO_COPY]", "upload localstrage data to s3"
+    desc "list LOCAL_OR_S3 [--b BUCKET_NAME]"
+    method_options b: :string
+    def list(local_or_s3)
+      setting = get_setting
+      if local_or_s3 == 'local'
+        bucket_name = options[:b]
+        bucket_list_data = FileManager.list(setting['AWS_BKUP_DIR'], bucket_name)
+        p bucket_list_data
+      else
+        @from_manager = S3Manager.new(bucket_name, setting)
+      end
+    end
+    desc "upload BUCKET_NAME TIMESTAMP [--nb NEW_BUCKET_NAME]", ""
     method_options nb: :string
     def upload(bucket_name, timestamp)
       setting = get_setting
@@ -37,21 +49,21 @@ module S3Sync
       strategy.execute
     end
 
-    desc "copy BUCKET_NAME_COPY_FROM BUCKET_NAME_COPY_TO", "copy s3 bucket"
+    desc "copy FROM_BUCKET_NAME TO_BUCKET_NAME", ""
     def copy(bucket_name_from, bucket_name_to)
       setting = get_setting
       strategy = CopyStrategy.new(bucket_name_from, bucket_name_to, setting)
       strategy.execute
     end
 
-    desc "remove BUCKET_NAME_TO_REMOVE", "remove s3 bucket"
+    desc "remove BUCKET_NAME", ""
     def remove(bucket_name)
       setting = get_setting
       strategy = RemoveStrategy.new(bucket_name, setting)
       strategy.execute
     end
 
-    desc "interactive", "use interactive interface for upload,download,copy,remove s3 data"
+    desc "interactive", ""
     def interactive
       setting = get_setting
       #bkupディレクトリ確認

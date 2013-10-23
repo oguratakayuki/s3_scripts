@@ -3,6 +3,26 @@
 module S3Sync
   class FileManager
     attr_reader :existance
+    def self.list(base_path, bucket_name)
+      existance = Dir.exist?(base_path)
+      if existance
+        ret = {}
+        Dir.chdir(base_path) do
+          if bucket_name
+            bucket_name_list = [bucket_name]
+          else
+            bucket_name_list = Dir.glob('*')
+          end
+          bucket_name_list.each do |bucket_name|
+            if Dir.exist?(File.join([base_path, bucket_name],''))
+              bucket_timestamp_list = Dir.glob("#{bucket_name}/*").map{|t| t.match(%r!.*/(.*)$!)[1] }
+              ret[bucket_name] = bucket_timestamp_list
+            end
+          end
+        end
+        ret
+      end
+    end
     def to_s
       instance_variables.each{|method| puts "FileManager\t#{method} : #{instance_variable_get(method.to_sym).to_s}" }
     end
