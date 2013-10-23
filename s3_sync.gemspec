@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.version       = S3Sync::VERSION
   spec.authors       = ["oguratakayuki"]
   spec.email         = ["otn.ogura@gmail.com"]
-  spec.description   = %q{TODO: Write a gem description}
-  spec.summary       = %q{TODO: Write a gem summary}
+  spec.description   = %q{Internationalize numbers adding normalization, validation and modifying the number field to restor the value to its original if validation fails}
+  spec.summary       = spec.description 
   spec.homepage      = ""
   spec.license       = "MIT"
 
