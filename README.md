@@ -8,13 +8,13 @@ s3_syncはローカルストレージとaws/s3のバケットの同期ツール�
 
 set environmental variable
 
-     export AWS_ACCESS_KEY_ID=''
+    export AWS_ACCESS_KEY_ID=''
 
-     export AWS_SECRET_ACCESS_KEY=''
+    export AWS_SECRET_ACCESS_KEY=''
 
-     export AWS_END_POINT=''
+    export AWS_END_POINT=''
 
-     export AWS_BKUP_DIR=''
+    export AWS_BKUP_DIR=''
 
 Add this line to your application's Gemfile:
 
@@ -22,11 +22,8 @@ Add this line to your application's Gemfile:
 
 And then execute:
 
-    $ bundle
+    bundle install
 
-Or install it yourself as:
-
-    $ gem install s3_sync
 
 ## Usage
 
