@@ -1,0 +1,4 @@
+#!/usr/bin/env ruby
+#
+require 's3_sync'
+S3Sync::CLI.start
