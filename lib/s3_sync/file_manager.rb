@@ -11,7 +11,7 @@ module S3Sync
           if bucket_name
             bucket_name_list = [bucket_name]
           else
-            bucket_name_list = Dir.glob('*')
+            bucket_name_list = self.bucket_name_list(base_path)
           end
           bucket_name_list.each do |bucket_name|
             if Dir.exist?(File.join([base_path, bucket_name],''))
@@ -22,6 +22,16 @@ module S3Sync
         end
         ret
       end
+    end
+    def self.bucket_name_list(base_path)
+      bucket_name_list = []
+      existance = Dir.exist?(base_path)
+      if existance
+        Dir.chdir(base_path) do
+          bucket_name_list = Dir.glob('*')
+        end
+      end
+      bucket_name_list
     end
     def to_s
       instance_variables.each{|method| puts "FileManager\t#{method} : #{instance_variable_get(method.to_sym).to_s}" }
@@ -99,6 +109,14 @@ module S3Sync
     def to_s
       instance_variables.each{|method| puts "S3Manager\t#{method} : #{instance_variable_get(method.to_sym).to_s}" }
     end
+    def self.bucket_name_list(setting)
+      s3 = AWS::S3.new(
+        :access_key_id     => setting['AWS_ACCESS_KEY_ID'],
+        :secret_access_key => setting['AWS_SECRET_ACCESS_KEY'],
+        :s3_endpoint       => setting['AWS_END_POINT']
+      )
+      ret = s3.buckets.client.list_buckets.first.to_ary[1].map{|temp| temp[:name]}
+    end
 
     def initialize(bucket_name, setting)
       @s3 = AWS::S3.new(
@@ -116,7 +134,6 @@ module S3Sync
         end
       end
     end
-
     def create_base
       abort "既に#{@bucket_name}は存在します"if @existance
       @bucket = @s3.buckets.create(@bucket_name)

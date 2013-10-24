@@ -28,16 +28,24 @@ module S3Sync
       strategy = DownloadStrategy.new(bucket_name, setting)
       strategy.execute
     end
-    desc "list LOCAL_OR_S3 [--b BUCKET_NAME]"
+    desc "list LOCAL_OR_S3 [-b BUCKET_NAME]", ""
     method_options b: :string
     def list(local_or_s3)
       setting = get_setting
       if local_or_s3 == 'local'
         bucket_name = options[:b]
         bucket_list_data = FileManager.list(setting['AWS_BKUP_DIR'], bucket_name)
-        p bucket_list_data
+        bucket_list_data.each do |key,value|
+          puts "local buckets:#{key}"
+          puts "timestamp:"
+          value.each_slice(10){|timestamp_list|  timestamp_list.each{|timestamp| print "#{timestamp}\t"}.tap{|t| puts "\n"}}
+        end
+      elsif local_or_s3 == 's3'
+        bucket_name_list = S3Manager.bucket_name_list(setting)
+        puts "s3 buckets:"
+        puts bucket_name_list
       else
-        @from_manager = S3Manager.new(bucket_name, setting)
+        abort 'prease choose s3 or local'
       end
     end
     desc "upload BUCKET_NAME TIMESTAMP [--nb NEW_BUCKET_NAME]", ""
@@ -78,16 +86,23 @@ module S3Sync
       abort '入力値が不正です'unless [1,2,3,4].member?(action_id)
       if action_id == 1
         #コピー元バケットの取得・存在確認
-        print 'バケット名を入力してください>>'
+        bucket_name_candidate_list = S3Manager.bucket_name_list(setting)
+        puts 'バケット名を入力してください'
+        puts "候補:\n#{bucket_name_candidate_list.join("\n")}"
+        print '>>'
         bucket_name = STDIN.gets.strip
       elsif action_id == 2
         #コピー元ディレクトリの確認
-        print 'コピー元のバケット名を入力してください>>'
+        candidate_bucket_list = Dir.glob("#{setting['AWS_BKUP_DIR']}/*").map{|dir| dir.match(%r!.*/(.*)$!)[1]}
+        puts 'コピー元のバケット名を入力してください'
+        puts "候補:\n#{candidate_bucket_list.join("\n")}"
+        print '>>'
         bucket_name = STDIN.gets.strip
         candidate_directory_path = File.join([setting['AWS_BKUP_DIR'], bucket_name],'*')
         candidate_directory_list = Dir.glob(candidate_directory_path).map{|dir| dir.match(%r!.*/(.*)$!)[1]}
         puts 'タイムスタンプを入力してください'
-        puts "候補: #{candidate_directory_list.join(' ')}"
+        puts "候補:"
+        puts candidate_directory_list.each_slice(10){|timestamp_list|  timestamp_list.each{|timestamp| print "#{timestamp}\t"}.tap{|t| puts "\n"}}
         print ">>"
         timestamp = STDIN.gets.strip
         print "コピー先バケット名を#{bucket_name}から変更しますか?(Y/n)>>"
@@ -102,12 +117,19 @@ module S3Sync
           abort '入力値が不正です'
         end
       elsif action_id == 3
-        print 'コピー元のバケット名を入力してください>>'
+        bucket_name_candidate_list = S3Manager.bucket_name_list(setting)
+        puts 'コピー元のバケット名を入力してください'
+        puts "候補:\n#{bucket_name_candidate_list.join("\n")}"
+        print ">>"
         bucket_name_from = STDIN.gets.strip
         print 'コピー先のバケット名を入力してください>>'
+        print '>>'
         bucket_name_to = STDIN.gets.strip
       elsif action_id == 4
-        print '削除対象のバケット名を入力してください>>'
+        bucket_name_candidate_list = S3Manager.bucket_name_list(setting)
+        puts '削除対象のバケット名を入力してください'
+        puts "候補:\n#{bucket_name_candidate_list.join("\n")}"
+        print '>>'
         bucket_name = STDIN.gets.strip
       end
       strategy =
