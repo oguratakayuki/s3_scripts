@@ -5,8 +5,19 @@
 
 module S3Sync
   class S3Strategy
+    class InvalidParameter < StandardError; end
+    class DataNotFound < StandardError; end
+    class DataAlreadyExists < StandardError; end
+    class InvalidDataIdentification < StandardError; end
     def check
       instance_variables.each{|method| puts "#{method} : #{instance_variable_get(method.to_sym).to_s}" }
+    end
+    protected
+    def setup_bkup_path(bucket_name, timestamp, setting)
+      ftimestamp_dir_name = timestamp
+      unique_bkup_base_dir = File.join([setting['AWS_BKUP_DIR'], bucket_name, ftimestamp_dir_name], '')
+      @unique_bkup_acl_setting_dir = unique_bkup_base_dir
+      @unique_bkup_data_dir = File.join([@unique_bkup_acl_setting_dir, 'data'], '')
     end
     protected
     def copy
@@ -35,83 +46,125 @@ module S3Sync
   end
 
   class DownloadStrategy < S3Strategy
-    def initialize(bucket_name, setting)
-      @is_ready = false
+    def self.initialize_with_cli(setting)
       #コピー元バケットの取得・存在確認
-      @from_manager = S3Manager.new(bucket_name, setting)
+      bucket_name_candidate_list = S3Aggregator.bucket_name_list(setting)
+      puts 'バケット名を入力してください'
+      puts "候補:\n#{bucket_name_candidate_list.join("\n")}"
+      print '>>'
+      bucket_name = STDIN.gets.strip
+      self.new(bucket_name,setting)
+    end
+    def initialize(bucket_name, setting)
+      raise S3Strategy::InvalidParameter, 'bucket_nameを指定してください' if bucket_name == '' or setting == nil
+      #コピー元バケットの取得・存在確認
+      @from_manager = S3Aggregator.new(bucket_name, setting)
       #コピー元ディレクトリの確認
-      abort 'バケットが存在しません'unless @from_manager.existance
+      raise S3Sync::S3Strategy::DataNotFound, 'バケットが存在しません' unless @from_manager.existence
       #コピー先ディレクトリの設定・確認・作成
-      ftimestamp_dir_name = Time.now.strftime("%Y%m%d%H%M%S")
-      unique_bkup_base_dir = File.join([setting['AWS_BKUP_DIR'], bucket_name, ftimestamp_dir_name], '')
-      unique_bkup_acl_setting_dir = unique_bkup_base_dir
-      unique_bkup_data_dir = File.join([unique_bkup_acl_setting_dir, 'data'], '')
-      aclm = AclManager.get_instance(unique_bkup_acl_setting_dir)
-      @to_manager = FileManager.new(unique_bkup_data_dir, aclm)
-      abort 'コピー先が既に存在します' if @to_manager.existance
-      @is_ready = true
+      setup_bkup_path(bucket_name, Time.now.strftime("%Y%m%d%H%M%S"), setting)
+      aclm = AclAggregator.get_instance(@unique_bkup_acl_setting_dir)
+      @to_manager = FileAggregator.new(@unique_bkup_data_dir, aclm)
+      raise DataAlreadyExists, 'コピー先が既に存在します' if @to_manager.existence
     end
     def execute
-      abort '実行できません。設定を確認してください' unless @is_ready
       copy
     end
   end
 
   class UploadStrategy < S3Strategy
+    def self.initialize_with_cli(setting)
+      candidate_bucket_list = Dir.glob("#{setting['AWS_BKUP_DIR']}/*").map{|dir| dir.match(%r!.*/(.*)$!)[1]}
+      puts 'コピー元のバケット名を入力してください'
+      puts "候補:\n#{candidate_bucket_list.join("\n")}"
+      print '>>'
+      bucket_name = STDIN.gets.strip
+      raise DataNotFound, 'バケット名が不正です' unless candidate_bucket_list.include?(bucket_name)
+      candidate_directory_path = File.join([setting['AWS_BKUP_DIR'], bucket_name],'*')
+      candidate_directory_list = Dir.glob(candidate_directory_path).map{|dir| dir.match(%r!.*/(.*)$!)[1]}
+      puts 'タイムスタンプを入力してください'
+      puts "候補:"
+      puts candidate_directory_list.each_slice(10){|timestamp_list|  timestamp_list.each{|timestamp| print "#{timestamp}\t"}.tap{|t| puts "\n"}}
+      print ">>"
+      timestamp = STDIN.gets.strip
+      raise DataNotFound, 'タイムスタンプが不正です' unless candidate_directory_list.include?(timestamp)
+      print "コピー先バケット名を#{bucket_name}から変更しますか?(Y/n)>>"
+      bucket_name_change = STDIN.gets.strip
+      if bucket_name_change == 'Y'
+        print '新しいバケット名を入力してください>>'
+        bucket_name_to = STDIN.gets.strip
+        raise InvalidParameter, 'バケット名が不正です' if bucket_name_to == ''
+      elsif  bucket_name_change == 'n'
+        bucket_name_to =  bucket_name
+      else
+        raise InvalidParameter, '入力値が不正です'
+      end
+      self.new(bucket_name, bucket_name_to, timestamp, setting)
+    end
     def initialize(bucket_name, bucket_name_to, timestamp, setting)
-      @is_ready = false
       #セットアップ
-      abort 'bucket_name,timestampを指定してください' if bucket_name == nil or timestamp == nil
-      ftimestamp_dir_name = timestamp
-      unique_bkup_base_dir = File.join([setting['AWS_BKUP_DIR'], bucket_name, ftimestamp_dir_name], '')
-      unique_bkup_acl_setting_dir = unique_bkup_base_dir
-      unique_bkup_data_dir = File.join([unique_bkup_acl_setting_dir, 'data'], '')
+      raise InvalidParameter, 'bucket_name,bucket_name_to,timestampを指定してください' if bucket_name == '' or bucket_name == '' or timestamp == ''
+      setup_bkup_path(bucket_name, timestamp, setting)
       #aclのセットアップ
-      aclm = AclManager.get_instance(unique_bkup_acl_setting_dir)
-      @from_manager = FileManager.new(unique_bkup_data_dir, aclm)
+      aclm = AclAggregator.get_instance(@unique_bkup_acl_setting_dir)
+      @from_manager = FileAggregator.new(@unique_bkup_data_dir, aclm)
       #コピー元ディレクトリの確認
-      abort 'コピー元がありません' unless @from_manager.existance
-      @to_manager = S3Manager.new(bucket_name_to, setting)
+      raise DataNotFound,  'コピー元がありません' unless @from_manager.existence
+      @to_manager = S3Aggregator.new(bucket_name_to, setting)
       #コピー先ディレクトリの確認
-      abort 'コピー先が既に存在します' if @to_manager.existance
-      @is_ready = true
+      raise DataAlreadyExists, 'コピー先が既に存在します' if @to_manager.existence
     end
     def execute
-      abort '実行できません。設定を確認してください' unless @is_ready
       copy
     end
   end
 
   class CopyStrategy < S3Strategy
+    def self.initialize_with_cli(setting)
+      candidate_bucket_list = S3Aggregator.bucket_name_list(setting)
+      puts 'コピー元のバケット名を入力してください'
+      puts "候補:\n#{candidate_bucket_list.join("\n")}"
+      print ">>"
+      bucket_name_from = STDIN.gets.strip
+      raise DataNotFound, 'バケット名が不正です' unless candidate_bucket_list.include?(bucket_name_from)
+      print 'コピー先のバケット名を入力してください>>'
+      print '>>'
+      bucket_name_to = STDIN.gets.strip
+      raise InvalidParameter, 'バケット名が不正です' if bucket_name_to == ''
+      self.new(bucket_name_from, bucket_name_to, setting)
+    end
     def initialize(bucket_name_from, bucket_name_to, setting)
-      @is_ready = false
-      abort 'bucket_name_from,bucket_name_toを指定してください' if bucket_name_from == nil or bucket_name_to == nil
+      raise S3Strategy::InvalidParameter, 'bucket_name_from,bucket_name_toを指定してください' if bucket_name_from == '' or bucket_name_to == ''
       #セットアップ
-      @from_manager = S3Manager.new(bucket_name_from, setting)
+      @from_manager = S3Aggregator.new(bucket_name_from, setting)
       #コピー元ディレクトリの確認
-      abort 'バケットが存在しません.処理を中断します' unless @from_manager.existance
-      @to_manager = S3Manager.new(bucket_name_to, setting)
+      raise DataNotFound, 'バケットが存在しません.処理を中断します' unless @from_manager.existence
+      @to_manager = S3Aggregator.new(bucket_name_to, setting)
       #コピー先ディレクトリの確認
-      abort '既にバケットが存在します.処理を中断します' if @to_manager.existance
-      @is_ready = true
+      raise DataAlreadyExists,  '既にバケットが存在します.処理を中断します' if @to_manager.existence
     end
     def execute
-      abort '実行できません。設定を確認してください' unless @is_ready
       copy
     end
   end
 
   class RemoveStrategy < S3Strategy
+    def self.initialize_with_cli(setting)
+      candidate_bucket_list = S3Aggregator.bucket_name_list(setting)
+      puts '削除対象のバケット名を入力してください'
+      puts "候補:\n#{candidate_bucket_list.join("\n")}"
+      print '>>'
+      bucket_name = STDIN.gets.strip
+      raise DataNotFound, 'バケット名が不正です' unless candidate_bucket_list.include?(bucket_name)
+      self.new(bucket_name, setting)
+    end
     def initialize(bucket_name, setting)
       @bucket_name = bucket_name
-      @is_ready = false
-      abort 'bucket_nameを指定してください' if bucket_name == nil
-      @from_manager = S3Manager.new(bucket_name, setting)
-      abort 'バケットが存在しません.処理を中断します' unless @from_manager.existance
-      @is_ready = true
+      raise S3Strategy::InvalidParameter, 'bucket_nameを指定してください' if bucket_name == nil
+      @from_manager = S3Aggregator.new(bucket_name, setting)
+      raise DataNotFound, 'バケットが存在しません.処理を中断します' unless @from_manager.existence
     end
     def execute
-      abort '実行できません。設定を確認してください' unless @is_ready
       @from_manager.delete
       puts "#{@bucket_name}を削除しました"
     end

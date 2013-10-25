@@ -1,4 +1,10 @@
 #!/usr/bin/env ruby
-#
-require 's3_sync'
+
+require 'thor'
+require 'aws-sdk'
+require './lib/s3_sync/cli.rb'
+require './lib/s3_sync/s3_strategy.rb'
+require './lib/s3_sync/file_aggregator.rb'
+require './lib/s3_sync/acl_aggregator.rb'
+
 S3Sync::CLI.start
