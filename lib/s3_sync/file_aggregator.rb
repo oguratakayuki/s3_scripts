@@ -2,6 +2,7 @@
 
 module S3Sync
   class FileAggregator
+    class DirectoryAlreadyExists < StandardError; end
     attr_reader :existence
     def self.list(base_path, bucket_name)
       existence = Dir.exist?(base_path)
@@ -51,7 +52,7 @@ module S3Sync
       end
     end
     def create_base
-      abort "既に#{@base_path}は存在します" if @existence
+      raise DirectoryAlreadyExists, "既に#{@base_path}は存在します" if @existence
       FileUtils.mkdir_p(@base_path)
       @existence = true
     end
@@ -70,7 +71,7 @@ module S3Sync
     def create_dir(dir_path)
       absolute_dir_path = File.join([@base_path, dir_path],'')
       if Dir.exist?(absolute_dir_path)
-        abort "#{absolute_dir_path}は既に存在します"
+        raise DirectoryAlreadyExists, "#{absolute_dir_path}は既に存在します"
       end
       Dir.mkdir(absolute_dir_path)
     end
@@ -126,7 +127,7 @@ module S3Sync
       )
       @bucket_name = bucket_name
       @item_list = Hash.new()
-      @existence =  @s3.buckets[@bucket_name].client.list_buckets.first.to_ary[1].select{|temp| temp[:name] == @bucket_name}.count == 0 ? false : true 
+      @existence =  @s3.buckets[@bucket_name].client.list_buckets.first.to_ary[1].select{|temp| temp[:name] == @bucket_name}.count == 0 ? false : true
       if @existence
         @bucket = @s3.buckets[@bucket_name]
         @bucket.objects.each do |s3obj|
@@ -135,7 +136,7 @@ module S3Sync
       end
     end
     def create_base
-      abort "既に#{@bucket_name}は存在します"if @existence
+      raise DirectoryAlreadyExists, "既に#{@bucket_name}は存在します" if @existence
       @bucket = @s3.buckets.create(@bucket_name)
       @existence = true
     end
